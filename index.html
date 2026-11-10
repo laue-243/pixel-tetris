@@ -2,55 +2,130 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pixel Tetris</title>
+<title>Pixel Tetris — Improved</title>
 <style>
-body { background: #000; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; image-rendering: pixelated; }
-canvas { border: 4px solid #333; image-rendering: pixelated; }
+body { background: #111; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; image-rendering: pixelated; font-family: monospace; }
+canvas { border: 6px solid #333; image-rendering: pixelated; }
+#side { color: #0f0; margin-left: 20px; font-size: 18px; }
 </style>
 </head>
 <body>
 <canvas id="game" width="240" height="400"></canvas>
+<div id="side">
+  <div>Score: <span id="sc">0</span></div>
+  <div>Best: <span id="bs">0</span></div>
+  <div>Lines: <span id="ln">0</span></div>
+  <div style="margin-top:20px">Next:</div>
+  <canvas id="next" width="80" height="80"></canvas>
+</div>
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+const nctx = document.getElementById('next').getContext('2d');
 ctx.imageSmoothingEnabled = false;
+nctx.imageSmoothingEnabled = false;
+
 const COLS = 10, ROWS = 20, SIZE = 20;
-let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+const colors = ['#0ff','#ff0','#f0f','#0f0','#f80','#f44','#44f'];
 const shapes = [
-  [[1,1,1,1]],
-  [[1,1],[1,1]],
-  [[0,1,0],[1,1,1]],
-  [[1,0,0],[1,1,1]],
-  [[0,0,1],[1,1,1]],
-  [[1,1,0],[0,1,1]],
-  [[0,1,1],[1,1,0]]
+  [[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]],
+  [[1,0,0],[1,1,1]], [[0,0,1],[1,1,1]],
+  [[1,1,0],[0,1,1]], [[0,1,1],[1,1,0]]
 ];
-let piece = {shape: shapes[Math.floor(Math.random()*shapes.length)], x:4, y:0};
-let score = 0;
-let dropTime = 0;
+
+let board, piece, nextPiece, score, lines, best, state, dropTime;
+
+function init() {
+  board = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+  score = 0; lines = 0;
+  best = parseInt(localStorage.getItem('tetrisBest')||'0');
+  piece = spawn();
+  nextPiece = spawn();
+  state = 'start';
+  dropTime = 0;
+  updateUI();
+}
+
+function spawn() {
+  const i = Math.floor(Math.random()*shapes.length);
+  return {shape: shapes[i], color: colors[i], x:4, y:0};
+}
+
+function updateUI() {
+  document.getElementById('sc').textContent = score;
+  document.getElementById('bs').textContent = best;
+  document.getElementById('ln').textContent = lines;
+  if (score > best) { best = score; localStorage.setItem('tetrisBest', best); }
+}
+
+function drawNext() {
+  nctx.fillStyle = '#111';
+  nctx.fillRect(0,0,80,80);
+  nextPiece.shape.forEach((row,dy) => {
+    row.forEach((v,dx) => {
+      if (v) {
+        nctx.fillStyle = nextPiece.color;
+        nctx.fillRect(dx*18+10, dy*18+10, 16, 16);
+      }
+    });
+  });
+}
 
 function draw() {
   ctx.fillStyle = '#111';
   ctx.fillRect(0,0,240,400);
+  // Grid lines
+  ctx.strokeStyle = '#222';
+  for (let i=0; i<=COLS; i++) {
+    ctx.beginPath(); ctx.moveTo(i*SIZE,0); ctx.lineTo(i*SIZE,400); ctx.stroke();
+  }
+  for (let i=0; i<=ROWS; i++) {
+    ctx.beginPath(); ctx.moveTo(0,i*SIZE); ctx.lineTo(200,i*SIZE); ctx.stroke();
+  }
+
   for (let y=0; y<ROWS; y++) {
     for (let x=0; x<COLS; x++) {
       if (board[y][x]) {
-        ctx.fillStyle = '#0ff';
-        ctx.fillRect(x*SIZE, y*SIZE, SIZE-1, SIZE-1);
+        ctx.fillStyle = board[y][x];
+        ctx.fillRect(x*SIZE+1, y*SIZE+1, SIZE-2, SIZE-2);
       }
     }
   }
-  piece.shape.forEach((row, dy) => {
-    row.forEach((val, dx) => {
-      if (val) {
-        ctx.fillStyle = '#f0f';
-        ctx.fillRect((piece.x+dx)*SIZE, (piece.y+dy)*SIZE, SIZE-1, SIZE-1);
+  piece.shape.forEach((row,dy) => {
+    row.forEach((v,dx) => {
+      if (v) {
+        ctx.fillStyle = piece.color;
+        ctx.fillRect((piece.x+dx)*SIZE+1, (piece.y+dy)*SIZE+1, SIZE-2, SIZE-2);
       }
     });
   });
-  ctx.fillStyle = '#fff';
-  ctx.font = '14px monospace';
-  ctx.fillText('Score: '+score, 5, 15);
+
+  drawNext();
+
+  if (state === 'start') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0,0,240,400);
+    ctx.fillStyle = '#0f0';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TETRIS', 120, 160);
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Arrow keys', 120, 200);
+    ctx.fillText('SPACE to start', 120, 230);
+  }
+  if (state === 'over') {
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(0,0,240,400);
+    ctx.fillStyle = '#f44';
+    ctx.font = 'bold 24px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', 120, 160);
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px monospace';
+    ctx.fillText('Score: '+score, 120, 200);
+    ctx.fillText('SPACE to retry', 120, 240);
+  }
 }
 
 function collide(shape, x, y) {
@@ -66,21 +141,27 @@ function collide(shape, x, y) {
 }
 
 function merge() {
-  piece.shape.forEach((row, dy) => {
-    row.forEach((val, dx) => {
-      if (val && piece.y+dy >= 0) board[piece.y+dy][piece.x+dx] = 1;
+  piece.shape.forEach((row,dy) => {
+    row.forEach((v,dx) => {
+      if (v && piece.y+dy >= 0) board[piece.y+dy][piece.x+dx] = piece.color;
     });
   });
 }
 
 function clearLines() {
+  let cleared = 0;
   for (let y=ROWS-1; y>=0; y--) {
     if (board[y].every(c => c)) {
       board.splice(y,1);
-      board.unshift(Array(COLS).fill(0));
-      score += 100;
+      board.unshift(Array(COLS).fill(null));
+      cleared++;
       y++;
     }
+  }
+  if (cleared) {
+    lines += cleared;
+    score += [0,100,300,500,800][cleared] || 800;
+    updateUI();
   }
 }
 
@@ -89,17 +170,15 @@ function rotate(shape) {
 }
 
 function loop(time) {
-  if (time - dropTime > 500) {
+  if (state === 'play' && time - dropTime > 500 - Math.min(lines*5, 300)) {
     if (!collide(piece.shape, piece.x, piece.y+1)) {
       piece.y++;
     } else {
       merge();
       clearLines();
-      piece = {shape: shapes[Math.floor(Math.random()*shapes.length)], x:4, y:0};
-      if (collide(piece.shape, piece.x, piece.y)) {
-        alert('Game Over! Score: '+score);
-        location.reload();
-      }
+      piece = nextPiece;
+      nextPiece = spawn();
+      if (collide(piece.shape, piece.x, piece.y)) state = 'over';
     }
     dropTime = time;
   }
@@ -108,16 +187,21 @@ function loop(time) {
 }
 
 document.addEventListener('keydown', e => {
+  if ((state === 'start' || state === 'over') && e.code === 'Space') {
+    init(); state = 'play'; return;
+  }
+  if (state !== 'play') return;
   if (e.key === 'ArrowLeft' && !collide(piece.shape, piece.x-1, piece.y)) piece.x--;
   if (e.key === 'ArrowRight' && !collide(piece.shape, piece.x+1, piece.y)) piece.x++;
   if (e.key === 'ArrowDown' && !collide(piece.shape, piece.x, piece.y+1)) piece.y++;
   if (e.key === 'ArrowUp') {
-    const rotated = rotate(piece.shape);
-    if (!collide(rotated, piece.x, piece.y)) piece.shape = rotated;
+    const r = rotate(piece.shape);
+    if (!collide(r, piece.x, piece.y)) piece.shape = r;
   }
   draw();
 });
 
+init();
 requestAnimationFrame(loop);
 </script>
 </body>
